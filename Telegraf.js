@@ -78,80 +78,116 @@ bot.setMyCommands([
 
 const adminChatId = 7422499452; // Your personal chat ID
 const userRequests = {}; // Store user requests
+const bookings = {}; // Store bookings
 
+// Step 1: Start Command
 bot.onText(/^\/start$/, (msg) => {
   const From = msg.chat.id;
   const caption = `
 Welcome to Nexus Creative Solution’s Telegram bot!
 
-We offer a range of services including poster designs, business bots for both WhatsApp and Telegram, and website creation.
+We offer a range of services including poster designs, business bots, and website creation.
 
-Please select a service from the menu below:
-1. Poster design
-2. Business bot
-3. Website creation
+To schedule a consultation, please select a service:`;
 
-Let us help you bring your ideas to life!`;
-  bot.sendMessage(From, caption);
+  const options = {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: 'Poster Design', callback_data: 'consult_poster' }],
+        [{ text: 'Business Bot', callback_data: 'consult_bot' }],
+        [{ text: 'Website Creation', callback_data: 'consult_website' }]
+      ]
+    }
+  };
+
+  bot.sendMessage(From, caption, options);
 });
 
-bot.onText(/^1$/, (msg) => {
-  const From = msg.chat.id;
-  const response = "You selected Poster Design! Please provide more details about your requirements.";
+// Step 2: Handle Service Selection
+bot.on('callback_query', (query) => {
+  const From = query.message.chat.id;
+  const data = query.data;
+
+  let response;
+  if (data.startsWith('consult_')) {
+    const service = data.replace('consult_', '');
+    response = `You selected ${capitalize(service)}! Please choose a date and time for your consultation.`;
+
+    // Save the service and request additional details
+    userRequests[From] = { service, details: '' };
+
+    // Example of available time slots (you can customize this)
+    const dateOptions = [
+      [{ text: 'Tomorrow', callback_data: 'slot_tomorrow' }],
+      [{ text: 'Next Week', callback_data: 'slot_next_week' }]
+    ];
+
+    bot.sendMessage(From, response, {
+      reply_markup: { inline_keyboard: dateOptions }
+    });
+  }
+
+  bot.answerCallbackQuery(query.id); // Acknowledge the callback
+});
+
+// Step 3: Handle Date/Time Slot Selection
+bot.on('callback_query', (query) => {
+  const From = query.message.chat.id;
+  const data = query.data;
+
+  let response;
+  if (data === 'slot_tomorrow') {
+    response = "You have selected a slot for tomorrow. Please provide your preferred time and any additional details.";
+    bookings[From] = { time: 'Tomorrow', details: '' };
+  } else if (data === 'slot_next_week') {
+    response = "You have selected a slot for next week. Please provide your preferred time and any additional details.";
+    bookings[From] = { time: 'Next Week', details: '' };
+  }
+
   bot.sendMessage(From, response);
-  userRequests[From] = { service: 'Poster Design', details: '' }; // Initialize user request
+  bot.answerCallbackQuery(query.id); // Acknowledge the callback
 });
 
-bot.onText(/^2$/, (msg) => {
-  const From = msg.chat.id;
-  const response = "You selected Business Bot! Please specify whether you need a WhatsApp or Telegram bot and provide more details.";
-  bot.sendMessage(From, response);
-  userRequests[From] = { service: 'Business Bot', details: '' }; // Initialize user request
-});
-
-bot.onText(/^3$/, (msg) => {
-  const From = msg.chat.id;
-  const response = "You selected Website Creation! Please provide more details about the type of website you need.";
-  bot.sendMessage(From, response);
-  userRequests[From] = { service: 'Website Creation', details: '' }; // Initialize user request
-});
-
+// Step 4: Handle Booking Details
 bot.on('message', async (msg) => {
   const From = msg.chat.id;
-  const text = msg.text.toLowerCase();
+  const text = msg.text.trim();
 
-  // If the user has selected a service and is now providing details
-  if (userRequests[From] && !['1', '2', '3'].includes(text)) {
-    userRequests[From].details = text;
-    const userRequest = userRequests[From];
+  if (bookings[From]) {
+    bookings[From].details = text;
 
-    // Send the request to the personal chat ID
-    await sendRequestToAdmin(From, userRequest);
+    // Send booking details to admin
+    const booking = bookings[From];
+    await sendBookingToAdmin(From, userRequests[From].service, booking);
 
-    // Notify the user
-    bot.sendMessage(From, "Thank you for your request! We will get back to you shortly.");
+    // Confirm booking with user
+    bot.sendMessage(From, "Thank you for scheduling your consultation! We will contact you soon with further details.");
 
-    // Optionally, remove the request after processing
-    delete userRequests[From];
-  } else if (text.includes('whatsapp bot')) {
-    const response = "You mentioned a WhatsApp bot! Please provide more details about your requirements.";
-    bot.sendMessage(From, response);
+    // Clean up after booking
+    delete bookings[From];
   }
 });
 
-async function sendRequestToAdmin(userId, userRequest) {
+// Function to send booking details to admin
+async function sendBookingToAdmin(userId, service, booking) {
   try {
     const message = `
-New Request Received:
+New Booking Received:
 User ID: ${userId}
-Service: ${userRequest.service}
-Details: ${userRequest.details}
+Service: ${service}
+Date/Time: ${booking.time}
+Details: ${booking.details}
     `;
     await bot.sendMessage(adminChatId, message);
-    console.log('Message sent to admin successfully');
+    console.log('Booking details sent to admin successfully');
   } catch (error) {
-    console.error('Error sending request to admin:', error);
+    console.error('Error sending booking details to admin:', error);
   }
+}
+
+// Utility function to capitalize the first letter of a string
+function capitalize(string) {
+  return string.charAt(0).toUpperCase() + string.slice(1);
 }
 ///end here
 
