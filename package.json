@@ -2,9 +2,9 @@
   "name": "nexus bot",
   "version": "0.0.1",
   "description": "Simple Telegram Bot TikTok Downloader.",
-  "main": "nexus.js",
+  "main": "Nexus.js",
   "scripts": {
-    "start": "node nexus.js"
+    "start": "node Nexus.js"
   },
   "author": "Tio",
   "license": "ISC",
