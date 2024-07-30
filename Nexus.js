@@ -1,6 +1,3 @@
-This is my full code 
-
-
 const Telegraf = require('node-telegram-bot-api');
 const { ttdl } = require('btch-downloader');
 const util = require('util');
