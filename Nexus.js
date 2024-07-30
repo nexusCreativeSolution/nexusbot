@@ -1,11 +1,8 @@
 // Dependencies and Bot setup
 const Telegraf = require('node-telegram-bot-api');
-const { ttdl } = require('btch-downloader');
-const util = require('util');
+const express = require('express');
 const chalk = require('chalk');
 const figlet = require('figlet');
-const express = require('express');
-const axios = require('axios');
 const app = express();
 const port = process.env.PORT || 8080;
 
@@ -40,9 +37,9 @@ function listenOnPort(port) {
 listenOnPort(port);
 
 // Bot config token
-let token = '7465318130:AAFui5FZMfGix7uVOR8j-fodfdyQsb8qCRM';  // Replace with your bot token
-const bot = new Telegraf(token, { polling: true });
+const token = '7465318130:AAFui5FZMfGix7uVOR8j-fodfdyQsb8qCRM';  // Replace with your bot token
 const adminChatId = 7422499452; // Your personal chat ID
+const bot = new Telegraf(token);
 const userRequests = {}; // Store user requests
 
 const logs = (message, color) => {
@@ -51,7 +48,7 @@ const logs = (message, color) => {
 };
 
 const Figlet = () => {
-  figlet('tiktokdl', { font: 'Block', horizontalLayout: 'default' }, function (err, data) {
+  figlet('tiktokdl', { font: 'Block', horizontalLayout: 'default' }, (err, data) => {
     if (err) {
       console.log('Error:', err);
       return;
@@ -67,21 +64,17 @@ bot.on('polling_error', (error) => {
 
 // Set menu commands
 bot.setMyCommands([
-  {
-    command: '/start',
-    description: 'Start a new conversation'
-  },
-  {
-    command: '/runtime',
-    description: 'Check bot runtime'
-  }
+  { command: '/start', description: 'Start a new conversation' },
+  { command: '/runtime', description: 'Check bot runtime' }
 ]);
 
 // Start Command
 bot.onText(/^\/start$/, (msg) => {
   const From = msg.chat.id;
-  userRequests[From] = { stage: 'ask_username' };
-  bot.sendMessage(From, "Welcome! Please enter your telegram username:");
+  if (!userRequests[From]) {
+    userRequests[From] = { stage: 'ask_username' };
+    bot.sendMessage(From, "Welcome! Please enter your telegram username:");
+  }
 });
 
 // Handle messages
@@ -129,15 +122,17 @@ bot.on('callback_query', (query) => {
 
 // Process Service Selection
 function handleServiceSelection(userId, data) {
-  if (data === 'poster_design') {
-    userRequests[userId] = { ...userRequests[userId], service: 'Poster Design', stage: 'collect_details' };
-    bot.sendMessage(userId, "You selected Poster Design! Please provide more details about your requirements.");
-  } else if (data === 'business_bot') {
-    userRequests[userId] = { ...userRequests[userId], service: 'Business Bot', stage: 'collect_details' };
-    bot.sendMessage(userId, "You selected Business Bot! Please specify whether you need a WhatsApp or Telegram bot and provide more details.");
-  } else if (data === 'website_creation') {
-    userRequests[userId] = { ...userRequests[userId], service: 'Website Creation', stage: 'collect_details' };
-    bot.sendMessage(userId, "You selected Website Creation! Please provide more details about the type of website you need.");
+  if (userRequests[userId]) {
+    if (data === 'poster_design') {
+      userRequests[userId] = { ...userRequests[userId], service: 'Poster Design', stage: 'collect_details' };
+      bot.sendMessage(userId, "You selected Poster Design! Please provide more details about your requirements.");
+    } else if (data === 'business_bot') {
+      userRequests[userId] = { ...userRequests[userId], service: 'Business Bot', stage: 'collect_details' };
+      bot.sendMessage(userId, "You selected Business Bot! Please specify whether you need a WhatsApp or Telegram bot and provide more details.");
+    } else if (data === 'website_creation') {
+      userRequests[userId] = { ...userRequests[userId], service: 'Website Creation', stage: 'collect_details' };
+      bot.sendMessage(userId, "You selected Website Creation! Please provide more details about the type of website you need.");
+    }
   }
 }
 
@@ -157,5 +152,3 @@ Details: ${userRequest.details}
     console.error('Error sending request to admin:', error);
   }
 }
-
-/// Remaining code for other bot features...
