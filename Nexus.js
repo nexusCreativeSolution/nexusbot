@@ -1,13 +1,15 @@
+// Dependencies and Bot setup
 const Telegraf = require('node-telegram-bot-api');
 const { ttdl } = require('btch-downloader');
 const util = require('util');
 const chalk = require('chalk');
 const figlet = require('figlet');
-const express = require('express'); 
+const express = require('express');
+const axios = require('axios');
 const app = express();
-const port = process.env.PORT || 1004;
+const port = process.env.PORT || 8080;
 
-// express 
+// Express setup
 app.get('/', (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   const data = {
@@ -25,7 +27,7 @@ function listenOnPort(port) {
   app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
   });
-app.on('error', (err) => {
+  app.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.log(`Port ${port} is already in use. Trying another port...`);
       listenOnPort(port + 1);
@@ -37,10 +39,11 @@ app.on('error', (err) => {
 
 listenOnPort(port);
 
-// Bot config token 
-let token = '7465318130:AAFui5FZMfGix7uVOR8j-fodfdyQsb8qCRM'  //replace this part with your bot token
+// Bot config token
+let token = '7465318130:AAFui5FZMfGix7uVOR8j-fodfdyQsb8qCRM';  // Replace with your bot token
 const bot = new Telegraf(token, { polling: true });
-let Start = new Date();
+const adminChatId = 7422499452; // Your personal chat ID
+const userRequests = {}; // Store user requests
 
 const logs = (message, color) => {
   const timestamp = new Date().toLocaleTimeString();
@@ -62,44 +65,57 @@ bot.on('polling_error', (error) => {
   logs(`Polling error: ${error.message}`, 'blue');
 });
 
-// set menu
+// Set menu commands
 bot.setMyCommands([
-	{
-		command: '/start',
-		description: 'Start a new conversation'
-	},
-	{
-		command: '/runtime',
-		description: 'Check bot runtime'
-	}
- ]);
-
-// command
-
-const adminChatId = 7422499452; // Your personal chat ID
-const userRequests = {}; // Store user requests
+  {
+    command: '/start',
+    description: 'Start a new conversation'
+  },
+  {
+    command: '/runtime',
+    description: 'Check bot runtime'
+  }
+]);
 
 // Start Command
 bot.onText(/^\/start$/, (msg) => {
   const From = msg.chat.id;
-  const caption = `
-Welcome to Nexus Creative Solution’s Telegram bot!
+  userRequests[From] = { stage: 'ask_username' };
+  bot.sendMessage(From, "Welcome! Please enter your telegram username:");
+});
 
-We offer a range of services including poster designs, business bots for both WhatsApp and Telegram, and website creation.
+// Handle messages
+bot.on('message', async (msg) => {
+  const From = msg.chat.id;
+  const text = msg.text.trim();
 
-Please select a service from the menu below:`;
+  if (!userRequests[From]) return;
 
-  const options = {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: 'Poster Design', callback_data: 'poster_design' }],
-        [{ text: 'Business Bot', callback_data: 'business_bot' }],
-        [{ text: 'Website Creation', callback_data: 'website_creation' }]
-      ]
+  const userStage = userRequests[From].stage;
+
+  if (userStage === 'ask_username') {
+    userRequests[From].username = text;
+    userRequests[From].stage = 'select_service';
+    bot.sendMessage(From, "Thank you! Please select a service from the menu below:", {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Poster Design', callback_data: 'poster_design' }],
+          [{ text: 'Business Bot', callback_data: 'business_bot' }],
+          [{ text: 'Website Creation', callback_data: 'website_creation' }]
+        ]
+      }
+    });
+  } else if (userStage === 'collect_details') {
+    userRequests[From].details = text;
+
+    if (text.split(/\s+/).length >= 20) {
+      await sendRequestToAdmin(From, userRequests[From]);
+      bot.sendMessage(From, "Thank you for your request! We will get back to you shortly.");
+      delete userRequests[From];
+    } else {
+      bot.sendMessage(From, "Your request is too short. Please provide at least 20 words of details.");
     }
-  };
-
-  bot.sendMessage(From, caption, options);
+  }
 });
 
 // Handle Callback Queries
@@ -113,49 +129,17 @@ bot.on('callback_query', (query) => {
 
 // Process Service Selection
 function handleServiceSelection(userId, data) {
-  let response;
   if (data === 'poster_design') {
-    response = "You selected Poster Design! Please provide more details about your requirements.";
-    userRequests[userId] = { service: 'Poster Design', details: '' };
+    userRequests[userId] = { ...userRequests[userId], service: 'Poster Design', stage: 'collect_details' };
+    bot.sendMessage(userId, "You selected Poster Design! Please provide more details about your requirements.");
   } else if (data === 'business_bot') {
-    response = "You selected Business Bot! Please specify whether you need a WhatsApp or Telegram bot and provide more details.";
-    userRequests[userId] = { service: 'Business Bot', details: '' };
+    userRequests[userId] = { ...userRequests[userId], service: 'Business Bot', stage: 'collect_details' };
+    bot.sendMessage(userId, "You selected Business Bot! Please specify whether you need a WhatsApp or Telegram bot and provide more details.");
   } else if (data === 'website_creation') {
-    response = "You selected Website Creation! Please provide more details about the type of website you need.";
-    userRequests[userId] = { service: 'Website Creation', details: '' };
+    userRequests[userId] = { ...userRequests[userId], service: 'Website Creation', stage: 'collect_details' };
+    bot.sendMessage(userId, "You selected Website Creation! Please provide more details about the type of website you need.");
   }
-
-  bot.sendMessage(userId, response);
 }
-
-// Handle User Messages
-bot.on('message', async (msg) => {
-  const From = msg.chat.id;
-  const text = msg.text.trim();
-
-  if (userRequests[From] && !['poster_design', 'business_bot', 'website_creation'].includes(text)) {
-    const wordCount = text.split(/\s+/).length; // Count words in the message
-
-    if (wordCount >= 20) {
-      userRequests[From].details = text;
-      const userRequest = userRequests[From];
-
-      // Send the request to the personal chat ID
-      await sendRequestToAdmin(From, userRequest);
-
-      // Notify the user
-      bot.sendMessage(From, "Thank you for your request! We will get back to you shortly.");
-
-      // Optionally, remove the request after processing
-      delete userRequests[From];
-    } else {
-      bot.sendMessage(From, "Your request is too short. Please provide at least 20 words of details.");
-    }
-  } else if (text.includes('whatsapp bot')) {
-    const response = "You mentioned a WhatsApp bot! Please provide more details about your requirements.";
-    bot.sendMessage(From, response);
-  }
-});
 
 // Function to send request details to admin
 async function sendRequestToAdmin(userId, userRequest) {
@@ -163,6 +147,7 @@ async function sendRequestToAdmin(userId, userRequest) {
     const message = `
 New Request Received:
 User ID: ${userId}
+Username: ${userRequest.username}
 Service: ${userRequest.service}
 Details: ${userRequest.details}
     `;
@@ -172,31 +157,5 @@ Details: ${userRequest.details}
     console.error('Error sending request to admin:', error);
   }
 }
-///end here
 
-bot.on('message', async (msg) => {
-  Figlet();
-  logs('Success activated', 'green');
-  const From = msg.chat.id;
-  const body = /^https:\/\/.*tiktok\.com\/.+/;
-   if (body.test(msg.text)) {
-    const url = msg.text;
-    try {        
-        const data = await ttdl(url)
-        const audio = data.audio[0]
-        const { title, title_audio } = data;
-        await bot.sendVideo(From, data.video[0], { caption: title });
-        await sleep(3000)
-        await bot.sendAudio(From, audio, { caption: title_audio });
-        await sleep(3000)
-        await bot.sendMessage(From, 'Powered by @wtffry');
-    } catch (error) {
-        bot.sendMessage(From, 'Sorry, an error occurred while downloading the TikTok video.');
-        log(`[ ERROR ] ${From}: ${error.message}`, 'red');
-    }
-}
-})
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+/// Remaining code for other bot features...
