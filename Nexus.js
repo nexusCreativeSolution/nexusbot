@@ -16,9 +16,7 @@ app.get('/', (req, res) => {
     message: 'Bot Successfully Activated!',
     author: 'NEXUS'
   };
-  const result = {
-    response: data
-  };
+  const result = { response: data };
   res.send(JSON.stringify(result, null, 2));
 });
 
@@ -39,12 +37,13 @@ function listenOnPort(port) {
 listenOnPort(port);
 
 // Bot setup
-let token = '7465318130:AAFui5FZMfGix7uVOR8j-fodfdyQsb8qCRM';  // replace this with your bot token
+let token = '7465318130:AAFui5FZMfGix7uVOR8j-fodfdyQsb8qCRM';  // Replace with your bot token
 const bot = new Telegraf(token, { polling: true });
+let Start = new Date();
 const adminChatId = 7422499452; // Your personal chat ID
 const userRequests = {}; // Store user requests
+const userDetails = {}; // Store user details
 
-// Utility functions
 const logs = (message, color) => {
   const timestamp = new Date().toLocaleTimeString();
   console.log(chalk[color](`[${timestamp}] => ${message}`));
@@ -61,33 +60,29 @@ const Figlet = () => {
   });
 };
 
-// Polling error handler
 bot.on('polling_error', (error) => {
   logs(`Polling error: ${error.message}`, 'blue');
 });
 
-// Set menu commands
+// Set bot commands
 bot.setMyCommands([
-  {
-    command: '/start',
-    description: 'Start a new conversation'
-  },
-  {
-    command: '/runtime',
-    description: 'Check bot runtime'
-  }
+  { command: '/start', description: 'Start a new conversation' },
+  { command: '/runtime', description: 'Check bot runtime' }
 ]);
-
-// Handle user details
-const userDetails = {}; // To store user details
 
 // Start command handler
 bot.onText(/^\/start$/, (msg) => {
   const From = msg.chat.id;
 
-  // Ask for the user's Telegram username
-  bot.sendMessage(From, "Welcome to Nexus Creative Solution’s Telegram bot! Please provide your Telegram username for our records:");
-  userDetails[From] = { stage: 'waiting_for_username' };
+  // Check if username is already collected
+  if (userDetails[From] && userDetails[From].username) {
+    // If the username is already collected, show the service menu
+    showServiceMenu(From);
+  } else {
+    // Otherwise, ask for the user's Telegram username
+    bot.sendMessage(From, "Welcome to Nexus Creative Solution’s Telegram bot! Please provide your Telegram username for our records:");
+    userDetails[From] = { stage: 'waiting_for_username' };
+  }
 });
 
 // Handle user messages
@@ -100,12 +95,13 @@ bot.on('message', async (msg) => {
     userDetails[From].username = text;
     userDetails[From].stage = 'username_collected';
 
+    // Show the service menu after collecting the username
     bot.sendMessage(From, "Thank you! Now, please select a service from the menu below:");
     showServiceMenu(From);
     return;
   }
 
-  // Handle service selection and other user messages
+  // If the user has selected a service and is providing details
   if (userRequests[From] && !['poster_design', 'business_bot', 'website_creation'].includes(text)) {
     const wordCount = text.split(/\s+/).length; // Count words in the message
 
@@ -113,7 +109,7 @@ bot.on('message', async (msg) => {
       userRequests[From].details = text;
       const userRequest = userRequests[From];
 
-      // Send the request to the admin
+      // Send the request to the personal chat ID
       await sendRequestToAdmin(From, userRequest);
 
       // Notify the user
@@ -130,9 +126,20 @@ bot.on('message', async (msg) => {
   }
 });
 
-// Function to show service menu
-function showServiceMenu(userId) {
+// Handle Callback Queries
+bot.on('callback_query', (query) => {
+  const From = query.message.chat.id;
+  const data = query.data;
+
+  handleServiceSelection(From, data);
+  bot.answerCallbackQuery(query.id); // Acknowledge the callback
+});
+
+// Show service menu
+function showServiceMenu(chatId) {
   const caption = `
+Welcome to Nexus Creative Solution’s Telegram bot!
+
 We offer a range of services including poster designs, business bots for both WhatsApp and Telegram, and website creation.
 
 Please select a service from the menu below:`;
@@ -147,19 +154,10 @@ Please select a service from the menu below:`;
     }
   };
 
-  bot.sendMessage(userId, caption, options);
+  bot.sendMessage(chatId, caption, options);
 }
 
-// Handle callback queries
-bot.on('callback_query', (query) => {
-  const From = query.message.chat.id;
-  const data = query.data;
-
-  handleServiceSelection(From, data);
-  bot.answerCallbackQuery(query.id); // Acknowledge the callback
-});
-
-// Process service selection
+// Process Service Selection
 function handleServiceSelection(userId, data) {
   let response;
   if (data === 'poster_design') {
@@ -176,12 +174,10 @@ function handleServiceSelection(userId, data) {
   bot.sendMessage(userId, response);
 }
 
-// Function to send request details to admin with username
+// Function to send request details to admin
 async function sendRequestToAdmin(userId, userRequest) {
   try {
-    // Retrieve the user's Telegram username from the userDetails object
-    const username = userDetails[userId] && userDetails[userId].username ? userDetails[userId].username : 'Unknown';
-
+    const username = userDetails[userId].username || 'Unknown'; // Default to 'Unknown' if username is not available
     const message = `
 New Request Received:
 User ID: ${userId}
@@ -195,3 +191,40 @@ Details: ${userRequest.details}
     console.error('Error sending request to admin:', error);
   }
 }
+
+// Feedback Command
+bot.onText(/^\/feedback$/, (msg) => {
+  const From = msg.chat.id;
+  bot.sendMessage(From, 'Please provide your feedback about our services:');
+});
+
+bot.onText(/^\/submit_feedback (.+)$/, (msg, match) => {
+  const From = msg.chat.id;
+  const feedback = match[1];
+
+  bot.sendMessage(adminChatId, `Feedback from user ${From}: ${feedback}`);
+  bot.sendMessage(From, 'Thank you for your feedback!');
+});
+
+// View Active Requests Command
+bot.onText(/^\/requests$/, (msg) => {
+  const From = msg.chat.id;
+
+  if (From === adminChatId) {
+    let response = 'Active Requests:\n\n';
+    const requestKeys = Object.keys(userRequests);
+
+    if (requestKeys.length === 0) {
+      response = 'There are no active requests at the moment.';
+    } else {
+      requestKeys.forEach((userId) => {
+        const request = userRequests[userId];
+        response += `User ID: ${userId}\nService: ${request.service}\nDetails: ${request.details || 'Pending'}\n\n`;
+      });
+    }
+
+    bot.sendMessage(From, response);
+  } else {
+    bot.sendMessage(From, 'You do not have permission to view active requests.');
+  }
+});
