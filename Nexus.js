@@ -7,7 +7,8 @@ const express = require('express');
 const app = express();
 const port = process.env.PORT || 1004;
 const axios = require('axios');
-// express 
+
+// Express setup
 app.get('/', (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   const data = {
@@ -25,7 +26,7 @@ function listenOnPort(port) {
   app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
   });
-app.on('error', (err) => {
+  app.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.log(`Port ${port} is already in use. Trying another port...`);
       listenOnPort(port + 1);
@@ -37,11 +38,13 @@ app.on('error', (err) => {
 
 listenOnPort(port);
 
-// Bot config token 
-let token = '7486712323:AAGCwVA20w4CJ5sP4sTYXe2_sh7HbsA4xeQ'  //replace this part with your bot token
+// Bot setup
+let token = '7486712323:AAGCwVA20w4CJ5sP4sTYXe2_sh7HbsA4xeQ';  // replace this with your bot token
 const bot = new Telegraf(token, { polling: true });
-let Start = new Date();
+const adminChatId = 7422499452; // Your personal chat ID
+const userRequests = {}; // Store user requests
 
+// Utility functions
 const logs = (message, color) => {
   const timestamp = new Date().toLocaleTimeString();
   console.log(chalk[color](`[${timestamp}] => ${message}`));
@@ -58,80 +61,51 @@ const Figlet = () => {
   });
 };
 
+// Polling error handler
 bot.on('polling_error', (error) => {
   logs(`Polling error: ${error.message}`, 'blue');
 });
 
-// set menu
+// Set menu commands
 bot.setMyCommands([
-	{
-		command: '/start',
-		description: 'Start a new conversation'
-	},
-	{
-		command: '/runtime',
-		description: 'Check bot runtime'
-	}
- ]);
+  {
+    command: '/start',
+    description: 'Start a new conversation'
+  },
+  {
+    command: '/runtime',
+    description: 'Check bot runtime'
+  }
+]);
 
-// command
-const adminChatId = 7422499452; // Your personal chat ID
-const userRequests = {}; // Store user requests
+// Handle user details
+const userDetails = {}; // To store user details
 
-// Start Command
+// Start command handler
 bot.onText(/^\/start$/, (msg) => {
   const From = msg.chat.id;
-  const caption = `
-Welcome to Nexus Creative Solution’s Telegram bot!
 
-We offer a range of services including poster designs, business bots for both WhatsApp and Telegram, and website creation.
-
-Please select a service from the menu below:`;
-
-  const options = {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: 'Poster Design', callback_data: 'poster_design' }],
-        [{ text: 'Business Bot', callback_data: 'business_bot' }],
-        [{ text: 'Website Creation', callback_data: 'website_creation' }]
-      ]
-    }
-  };
-
-  bot.sendMessage(From, caption, options);
+  // Ask for the user's Telegram username
+  bot.sendMessage(From, "Welcome to Nexus Creative Solution’s Telegram bot! Please provide your Telegram username for our records:");
+  userDetails[From] = { stage: 'waiting_for_username' };
 });
 
-// Handle Callback Queries
-bot.on('callback_query', (query) => {
-  const From = query.message.chat.id;
-  const data = query.data;
-
-  handleServiceSelection(From, data);
-  bot.answerCallbackQuery(query.id); // Acknowledge the callback
-});
-
-// Process Service Selection
-function handleServiceSelection(userId, data) {
-  let response;
-  if (data === 'poster_design') {
-    response = "You selected Poster Design! Please provide more details about your requirements.";
-    userRequests[userId] = { service: 'Poster Design', details: '' };
-  } else if (data === 'business_bot') {
-    response = "You selected Business Bot! Please specify whether you need a WhatsApp or Telegram bot and provide more details.";
-    userRequests[userId] = { service: 'Business Bot', details: '' };
-  } else if (data === 'website_creation') {
-    response = "You selected Website Creation! Please provide more details about the type of website you need.";
-    userRequests[userId] = { service: 'Website Creation', details: '' };
-  }
-
-  bot.sendMessage(userId, response);
-}
-
-// Handle User Messages
+// Handle user messages
 bot.on('message', async (msg) => {
   const From = msg.chat.id;
   const text = msg.text.trim();
 
+  // Check if we're waiting for the user's username
+  if (userDetails[From] && userDetails[From].stage === 'waiting_for_username') {
+    userDetails[From].username = text;
+    userDetails[From].stage = 'username_collected';
+
+    bot.sendMessage(From, "Thank you! Now, please select a service from the menu below:");
+    showServiceMenu(From);
+    return;
+  }
+
+  // Handle service selection and other user messages
   if (userRequests[From] && !['poster_design', 'business_bot', 'website_creation'].includes(text)) {
     const wordCount = text.split(/\s+/).length; // Count words in the message
 
@@ -139,7 +113,7 @@ bot.on('message', async (msg) => {
       userRequests[From].details = text;
       const userRequest = userRequests[From];
 
-      // Send the request to the personal chat ID
+      // Send the request to the admin
       await sendRequestToAdmin(From, userRequest);
 
       // Notify the user
@@ -156,16 +130,58 @@ bot.on('message', async (msg) => {
   }
 });
 
-// Function to send request details to admin
-async function sendRequestToAdmin(ctx, userRequest) {
-  try {
-    if (!ctx.from) {
-      console.error('Context "from" is undefined.');
-      return; // Or handle the case where ctx.from is not available
-    }
+// Function to show service menu
+function showServiceMenu(userId) {
+  const caption = `
+We offer a range of services including poster designs, business bots for both WhatsApp and Telegram, and website creation.
 
-    const userId = ctx.from.id;
-    const username = ctx.from.username || 'Unknown'; // Default to 'Unknown' if username is not available
+Please select a service from the menu below:`;
+
+  const options = {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: 'Poster Design', callback_data: 'poster_design' }],
+        [{ text: 'Business Bot', callback_data: 'business_bot' }],
+        [{ text: 'Website Creation', callback_data: 'website_creation' }]
+      ]
+    }
+  };
+
+  bot.sendMessage(userId, caption, options);
+}
+
+// Handle callback queries
+bot.on('callback_query', (query) => {
+  const From = query.message.chat.id;
+  const data = query.data;
+
+  handleServiceSelection(From, data);
+  bot.answerCallbackQuery(query.id); // Acknowledge the callback
+});
+
+// Process service selection
+function handleServiceSelection(userId, data) {
+  let response;
+  if (data === 'poster_design') {
+    response = "You selected Poster Design! Please provide more details about your requirements.";
+    userRequests[userId] = { service: 'Poster Design', details: '' };
+  } else if (data === 'business_bot') {
+    response = "You selected Business Bot! Please specify whether you need a WhatsApp or Telegram bot and provide more details.";
+    userRequests[userId] = { service: 'Business Bot', details: '' };
+  } else if (data === 'website_creation') {
+    response = "You selected Website Creation! Please provide more details about the type of website you need.";
+    userRequests[userId] = { service: 'Website Creation', details: '' };
+  }
+
+  bot.sendMessage(userId, response);
+}
+
+// Function to send request details to admin with username
+async function sendRequestToAdmin(userId, userRequest) {
+  try {
+    // Retrieve the user's Telegram username from the userDetails object
+    const username = userDetails[userId] && userDetails[userId].username ? userDetails[userId].username : 'Unknown';
+
     const message = `
 New Request Received:
 User ID: ${userId}
@@ -179,73 +195,3 @@ Details: ${userRequest.details}
     console.error('Error sending request to admin:', error);
   }
 }
-///end here
-
-bot.on('message', async (msg) => {
-  Figlet();
-  logs('Success activated', 'green');
-  const From = msg.chat.id;
-  const body = /^https:\/\/.*tiktok\.com\/.+/;
-   if (body.test(msg.text)) {
-    const url = msg.text;
-    try {        
-        const data = await ttdl(url)
-        const audio = data.audio[0]
-        const { title, title_audio } = data;
-        await bot.sendVideo(From, data.video[0], { caption: title });
-        await sleep(3000)
-        await bot.sendAudio(From, audio, { caption: title_audio });
-        await sleep(3000)
-        await bot.sendMessage(From, 'Powered by @wtffry');
-    } catch (error) {
-        bot.sendMessage(From, 'Sorry, an error occurred while downloading the TikTok video.');
-        log(`[ ERROR ] ${From}: ${error.message}`, 'red');
-    }
-}
-})
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-///check active request
-
-// View Active Requests Command
-bot.onText(/^\/requests$/, (msg) => {
-  const From = msg.chat.id;
-
-  if (From === adminChatId) {
-    let response = 'Active Requests:\n\n';
-    const requestKeys = Object.keys(userRequests);
-
-    if (requestKeys.length === 0) {
-      response = 'There are no active requests at the moment.';
-    } else {
-      requestKeys.forEach((userId) => {
-        const request = userRequests[userId];
-        response += `User ID: ${userId}\nService: ${request.service}\nDetails: ${request.details || 'Pending'}\n\n`;
-      });
-    }
-
-    bot.sendMessage(From, response);
-  } else {
-    bot.sendMessage(From, 'You do not have permission to view active requests.');
-  }
-});
-
-
- 
-
-// Feedback Command
-bot.onText(/^\/feedback$/, (msg) => {
-  const From = msg.chat.id;
-  bot.sendMessage(From, 'Please provide your feedback about our services:');
-});
-
-bot.onText(/^\/submit_feedback (.+)$/, (msg, match) => {
-  const From = msg.chat.id;
-  const feedback = match[1];
-
-  bot.sendMessage(adminChatId, `Feedback from user ${From}: ${feedback}`);
-  bot.sendMessage(From, 'Thank you for your feedback!');
-});
