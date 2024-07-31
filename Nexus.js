@@ -5,7 +5,7 @@ const chalk = require('chalk');
 const figlet = require('figlet');
 const express = require('express'); 
 const app = express();
-const port = process.env.PORT || 1004;
+const port = process.env.PORT || 8080;
 const axios = require('axios');
 
 // Express setup
@@ -39,7 +39,7 @@ function listenOnPort(port) {
 listenOnPort(port);
 
 // Bot setup
-let token = '7486712323:AAGCwVA20w4CJ5sP4sTYXe2_sh7HbsA4xeQ';  // replace this with your bot token
+let token = '7465318130:AAFui5FZMfGix7uVOR8j-fodfdyQsb8qCRM';  // replace this with your bot token
 const bot = new Telegraf(token, { polling: true });
 const adminChatId = 7422499452; // Your personal chat ID
 const userRequests = {}; // Store user requests
