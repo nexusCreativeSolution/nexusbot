@@ -1,4 +1,4 @@
-const Telegraf = require('node-telegram-bot-api');
+const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const chalk = require('chalk');
 const figlet = require('figlet');
@@ -22,7 +22,7 @@ app.listen(port, () => {
 // Bot setup
 const BOT_TOKEN = '7465318130:AAFui5FZMfGix7uVOR8j-fodfdyQsb8qCRM'; // Your actual bot token
 const ADMIN_CHAT_ID = 7422499452; // Your personal chat ID for receiving requests
-const bot = new Telegraf(BOT_TOKEN, { polling: true });
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
 const userRequests = {};  // Store ongoing requests
 const userDetails = {};   // Store user details
@@ -42,7 +42,21 @@ figlet('NEXUS BOT', (err, data) => {
   logMessage('Bot successfully started', 'yellow');
 });
 
-// Handle start command
+// Helper function to show service menu
+const showServiceMenu = (chatId) => {
+  const options = {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: 'Poster Design', callback_data: 'poster_design' }],
+        [{ text: 'Business Bot', callback_data: 'business_bot' }],
+        [{ text: 'Website Creation', callback_data: 'website_creation' }],
+      ],
+    },
+  };
+  bot.sendMessage(chatId, 'Please select a service:', options);
+};
+
+// Handle /start command
 bot.onText(/^\/start$/, (msg) => {
   const chatId = msg.chat.id;
   if (!userDetails[chatId] || !userDetails[chatId].username) {
@@ -53,7 +67,7 @@ bot.onText(/^\/start$/, (msg) => {
   }
 });
 
-// Handle service selection
+// Handle service selection via callback query
 bot.on('callback_query', (query) => {
   const chatId = query.message.chat.id;
   const service = query.data;
@@ -70,25 +84,28 @@ bot.on('callback_query', (query) => {
     case 'website_creation':
       response = "You selected Website Creation! Please provide details about the type of website you need.";
       break;
+    default:
+      response = "Unknown service. Please select a valid option.";
   }
   bot.sendMessage(chatId, response);
   bot.answerCallbackQuery(query.id);
 });
 
-// Handle username submission
-bot.on('message', (msg) => {
+// Handle all messages
+bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
+  const userMessage = msg.text.toLowerCase().trim();
 
+  // Check if the user is providing a username
   if (userDetails[chatId]?.stage === 'waiting_for_username') {
     userDetails[chatId].username = msg.text;
     userDetails[chatId].stage = 'completed';
     bot.sendMessage(chatId, "Thank you! Now, please select a service from the menu below.");
     showServiceMenu(chatId);
   } else if (userRequests[chatId] && !userRequests[chatId].details) {
-    // Handle detailed service description
-    const description = msg.text.trim();
-    if (description.split(/\s+/).length >= 20) {
-      userRequests[chatId].details = description;
+    // Check if user is providing details for a selected service
+    if (userMessage.split(/\s+/).length >= 20) {
+      userRequests[chatId].details = userMessage;
       const username = userDetails[chatId]?.username || 'Unknown User';
 
       const adminMessage = `
@@ -107,24 +124,18 @@ Details: ${userRequests[chatId].details}
     } else {
       bot.sendMessage(chatId, "Please provide at least 20 words describing your requirements.");
     }
-  }
-});
+  } else {
+    // General message handling
+    let responseMessage = "";
 
-bot.on('message', (msg) => {
-  const chatId = msg.chat.id;
-  const userMessage = msg.text.toLowerCase();
-
-  if (!userRequests[chatId] && !userDetails[chatId]?.stage) { // Check if the message is not handled by other handlers
-    let responseMessage;
-
-  if (userMessage.includes('hi')) { 
-    responseMessage = "Hi there! You're now chatting with Nexus Bot. type /start to get started";
-  } else if (userMessage.includes('contact')) {
+    if (userMessage.includes('hi')) {
+      responseMessage = "Hi there! You're now chatting with Nexus Bot. Type /start to get started.";
+    } else if (userMessage.includes('contact')) {
       responseMessage = "Here are the contact details for Nexus Creative Solution:\n\n" +
-        "•  Nexus Creative Solution\n" +
-        "• Website:  tinyurl.com/24ckqsmk\n" +
-        "•  Instagram: @nexus_creative_solution\n" +
-        "• WhatsApp Number: +18763351213\n\n" +
+        "• **Business Name:** Nexus Creative Solution\n" +
+        "• **Website:** [nexuscreativesolution.com](https://nexuscreativesolution.com)\n" +
+        "• **Instagram:** [@nexus_creative](https://instagram.com/nexus_creative)\n" +
+        "• **WhatsApp Number:** +1234567890\n\n" +
         "For a callback, please provide your contact number. If there's anything else we can assist you with, feel free to let us know.";
     } else if (userMessage.includes('budget')) {
       responseMessage = "To help us tailor our services to your needs, please provide the following details:\n\n" +
@@ -138,38 +149,14 @@ bot.on('message', (msg) => {
         "  * Includes intermediate designs or moderately advanced functionalities.\n" +
         "- **Professional Package:** JMD 40,000 - JMD 80,000\n" +
         "  * Includes high-quality designs or sophisticated bot solutions.\n\n" +
-        "Providing your budget and project details will help us offer you the best possible service within your budget. Thank you!\n\n" +
-        "our projects can be low as 5,000 jmd or high as 80,000 jmd. please let us know what you need. type /contact to get to use ";
+        "Providing your budget and project details will help us offer you the best possible service within your budget. Thank you!";
     } else if (userMessage.includes('about')) {
-      responseMessage = "Nexus Creative Solution offers a range of services including Poster Design, Business Bot development, and Website Creation. type  /start to get started!😊";
-    } 
+      responseMessage = "Nexus Creative Solution offers a range of services including Poster Design, Business Bot development, and Website Creation. Type /start to get started! 😊";
+    }
 
-    // Only send a message if a response was set
+    // Send response if set
     if (responseMessage) {
       bot.sendMessage(chatId, responseMessage);
     }
   }
-});
-// Show service menu to user
-const showServiceMenu = (chatId) => {
-  const options = {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: 'Poster Design', callback_data: 'poster_design' }],
-        [{ text: 'Business Bot', callback_data: 'business_bot' }],
-        [{ text: 'Website Creation', callback_data: 'website_creation' }]
-      ]
-    }
-  };
-
-  bot.sendMessage(chatId, "Please select a service from the menu below:", options);
-};
-
-// Error handling
-bot.on('polling_error', (error) => {
-  logMessage(`Polling error: ${error.message}`, 'red');
-});
-
-bot.on('error', (error) => {
-  logMessage(`Bot error: ${error.message}`, 'red');
 });
