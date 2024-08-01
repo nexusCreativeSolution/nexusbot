@@ -20,7 +20,7 @@ app.listen(port, () => {
 });
 
 // Bot setup
-const BOT_TOKEN = 'YOUR_BOT_TOKEN';  // Replace with your actual bot token
+const BOT_TOKEN = '7465318130:AAFui5FZMfGix7uVOR8j-fodfdyQsb8qCRM';// Replace with your actual bot token
 const ADMIN_CHAT_ID = 7422499452;    // Your personal chat ID for receiving requests
 const bot = new Telegraf(BOT_TOKEN, { polling: true });
 
