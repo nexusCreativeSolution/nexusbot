@@ -2,7 +2,21 @@ const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const chalk = require('chalk');
 const figlet = require('figlet');
+const mongoose = require('mongoose');
 
+
+mongoose.connect('mongodb+srv://casinobot:123johniphone@cluster0.nfztvsi.mongodb.net/?retryWrites=true&w=majority', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+});
+
+mongoose.connection.on('connected', () => {
+  console.log('Mongoose connected to database');
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('Mongoose connection error:', err);
+});
 // Express app setup
 const app = express();
 const port = process.env.PORT || 3000;
@@ -26,6 +40,8 @@ const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
 const userRequests = {};  // Store ongoing requests
 const userDetails = {};   // Store user details
+const PERMANENT_ADMIN_ID = 7422499452;
+
 
 // Function to log messages
 const logMessage = (message, color = 'green') => {
@@ -66,6 +82,11 @@ bot.onText(/^\/start$/, (msg) => {
     showServiceMenu(chatId);
   }
 });
+
+
+
+
+
 
 // Handle service selection via callback query
 bot.on('callback_query', (query) => {
@@ -160,3 +181,157 @@ Details: ${userRequests[chatId].details}
     }
   }
 });
+
+bot.onText(/^\/faq$/, (msg) => {
+  const chatId = msg.chat.id;
+  const faqMessage = `
+**Frequently Asked Questions:**
+
+1. **What services do you offer?**
+   - We offer Poster Design, Business Bots, and Website Creation.
+
+2. **How can I get started?**
+   - Use the /start command to select a service and follow the prompts.
+
+3. **What are your pricing options?**
+   - We have Basic, Standard, and Professional packages. Use /pricing for details.
+
+4. **How do I contact you?**
+   - Use /contact for our contact details.
+
+5. **How long does a project take?**
+   - Project timelines vary based on complexity. We'll provide an estimate after discussing your specific needs.
+
+6. **Do you offer custom services?**
+   - Yes, we tailor our services to meet your unique requirements.
+
+If you have any other questions, feel free to ask!
+  `;
+
+  bot.sendMessage(chatId, faqMessage);
+});
+
+
+
+const Admin = require('./Admin'); // Import the Admin model
+
+// Admin details state
+const adminDetails = {};
+
+// Handle new admin registration
+bot.onText(/^\/register (.+)$/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const name = match[1];
+
+  try {
+    // Check if the admin is already registered
+    const existingAdmin = await Admin.findOne({ adminId: chatId });
+
+    if (existingAdmin) {
+      return bot.sendMessage(chatId, "You are already registered as an admin.");
+    }
+
+    // Prompt for Telegram username
+    bot.sendMessage(chatId, "Please provide your Telegram username (e.g., @username):");
+
+    // Store the state to capture the next message
+    adminDetails[chatId] = { stage: 'waiting_for_username_registration', name: name };
+
+  } catch (err) {
+    console.error('Error during admin registration:', err);
+    bot.sendMessage(chatId, "There was an error during registration. Please try again later.");
+  }
+});
+
+// Handle the response with the Telegram username
+bot.on('message', async (msg) => {
+  const chatId = msg.chat.id;
+  const userMessage = msg.text;
+
+  if (adminDetails[chatId] && adminDetails[chatId].stage === 'waiting_for_username_registration') {
+    const username = userMessage.startsWith('@') ? userMessage : `@${userMessage}`;
+    const name = adminDetails[chatId].name;
+
+    try {
+      // Register new admin with the provided username
+      const newAdmin = new Admin({ adminId: chatId, name: name, status: 'offline', telegramUsername: username });
+      await newAdmin.save();
+
+      bot.sendMessage(chatId, "You have been registered as an admin. Please set your status using /status online or /status offline.");
+
+      // Clear the admin's state
+      delete adminDetails[chatId];
+    } catch (err) {
+      console.error('Error saving new admin:', err);
+      bot.sendMessage(chatId, "There was an error during registration. Please try again later.");
+    }
+  }
+});
+
+
+
+// Handle /status command
+bot.onText(/^\/status (online|offline)$/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const status = match[1]; // 'online' or 'offline'
+
+  try {
+    // Find and update the admin's status
+    const admin = await Admin.findOneAndUpdate(
+      { adminId: chatId },
+      { status: status },
+      { new: true }
+    );
+
+    if (admin) {
+      bot.sendMessage(chatId, `Your status has been updated to ${status}.`);
+    } else {
+      bot.sendMessage(chatId, "You are not registered as an admin. Please register using /register <name>.");
+    }
+  } catch (err) {
+    console.error('Error updating admin status:', err);
+    bot.sendMessage(chatId, "There was an error updating your status. Please try again later.");
+  }
+});
+  // Handle /live command
+  bot.onText(/^\/live$/, async (msg) => {
+    const chatId = msg.chat.id;
+
+    try {
+      // Check if there are any admins online
+      const onlineAdmins = await Admin.find({ status: 'online' });
+
+      if (onlineAdmins.length > 0) {
+        // Use the first online admin for simplicity
+        const admin = onlineAdmins[0];
+        const username = admin.telegramUsername;
+
+        bot.sendMessage(chatId, `You are now connected to an admin:\n\n**Admin Name:** ${admin.name}\n**Admin Contact:** [Contact Admin](https://t.me/${username})\n\nYou can now send messages directly to the admin. If you want to stop the chat, type /endchat.`);
+      } else {
+        bot.sendMessage(chatId, "All admins are currently offline. Please try again later.");
+      }
+    } catch (err) {
+      console.error('Error handling /live command:', err);
+      bot.sendMessage(chatId, "There was an error handling your request. Please try again later.");
+    }
+  });;
+/*
+// Connect to MongoDB (make sure this matches your database connection setup)
+mongoose.connect('mongodb+srv://casinobot:123johniphone@cluster0.nfztvsi.mongodb.net/?retryWrites=true&w=majority', { useNewUrlParser: true, useUnifiedTopology: true });
+
+async function clearDatabase() {
+  try {
+    // Remove all documents from the Admin collection
+    await Admin.deleteMany({});
+    console.log('All admin documents have been removed.');
+
+    // Optionally, you can close the connection after the operation
+    mongoose.connection.close();
+  } catch (error) {
+    console.error('Error clearing the database:', error);
+  }
+}
+
+// Call the function to clear the database
+clearDatabase();
+*/
